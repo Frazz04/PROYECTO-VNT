@@ -130,4 +130,4 @@ If the calculated steering angle is less than 4 degrees, the node forces the ang
 ```
 Finally, the calculated steering angle and optimal velocity are packaged into an `AckermannDriveStamped` message and published to drive the car.
 
-![Node Execution and Track Performance](link_to_your_image_2.png)
+![Node Execution and Track Performance](https://github.com/Frazz04/PROYECTO-VNT/blob/main/Screencast%20from%2011-13-2026%2009_01_10%20PM.gif)
