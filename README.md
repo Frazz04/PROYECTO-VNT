@@ -15,7 +15,7 @@ To run this controller on a custom track like Sakhir, configure the map files in
 4. Update the simulator configuration file (`sim.yaml` inside the `config` folder) or launch file so the `map_path` parameter points to your `sakhir` map.
 5. Rebuild your workspace using `colcon build`.
 
-![Sakhir Map Configuration](link_to_your_image_1.png)
+![Sakhir Map Configuration](https://github.com/Frazz04/PROYECTO-VNT/blob/main/Sakhir_map.png)
 
 ## 2. Running the Simulator
 
@@ -207,4 +207,4 @@ A `4°` steering deadband eliminates high-speed oscillation on straights. Instea
 ```
 The resulting steering angle and target speed are packaged into an `AckermannDriveStamped` message and published to `/drive`.
 
-![Node Execution and Track Performance](link_to_your_image_2.png)
+![Node Execution and Track Performance](https://github.com/Frazz04/PROYECTO-VNT/blob/main/Screencast%20from%2011-13-2026%2009_01_10%20PM.gif)
