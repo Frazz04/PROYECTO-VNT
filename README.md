@@ -15,7 +15,7 @@ To run this controller on a custom track like Sakhir, you need to configure the 
 4. Update the simulator's configuration file (usually `sim.yaml` inside the `config` folder) or the main launch file so the `map_path` parameter points to your new `sakhir` map.
 5. Save the changes and rebuild your workspace using `colcon build`.
 
-![Sakhir Map Configuration](link_to_your_image_1.png)
+![Sakhir Map Configuration](https://github.com/Frazz04/PROYECTO-VNT/blob/main/Sakhir_map.png)
 
 ## 2. Running the Simulator
 
