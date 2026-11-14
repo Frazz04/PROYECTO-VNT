@@ -1,5 +1,8 @@
 # F1Tenth - Reactive Follow the Gap Controller
 
+**Author:** Alain Sánchez | Mechatronics Engineering Student at ESPOL  
+*Project developed for the Unmanned Vehicles course.*
+
 This repository contains a high-performance Reactive Follow the Gap controller for the F1Tenth ROS 2 simulator. The node has been highly optimized to reach top speeds (up to 11 m/s) on the Sakhir track while maintaining structural stability and preventing understeer in tight corners.
 
 ## 1. Custom Map Setup (Sakhir Track)
@@ -47,7 +50,7 @@ class ReactiveFollowGap(Node):
         self.subscription = self.create_subscription(LaserScan, '/scan', self.lidar_callback, 10)
         self.publisher = self.create_publisher(AckermannDriveStamped, '/drive', 10)
 ```
-**Explanation:** We initialize the ROS 2 node, subscribing to the `/scan` topic to receive real-time LiDAR data, and creating a publisher for the `/drive` topic to send the Ackermann steering and speed commands.
+We initialize the ROS 2 node, subscribing to the `/scan` topic to receive real-time LiDAR data, and creating a publisher for the `/drive` topic to send the Ackermann steering and speed commands.
 
 ### 4.2. LiDAR Preprocessing
 ```python
@@ -64,7 +67,7 @@ class ReactiveFollowGap(Node):
         
         return proc_ranges
 ```
-**Explanation:** The raw laser scan data is cleaned by replacing `NaN` and infinite values with a maximum vision distance of `18.0` meters. A frontal vision cone is established by ignoring angles greater than `1.30` radians, preventing the car from erratic steering caused by parallel side walls.
+The raw laser scan data is cleaned by replacing `NaN` and infinite values with a maximum vision distance of `18.0` meters. A frontal vision cone is established by ignoring angles greater than `1.30` radians, preventing the car from erratic steering caused by parallel side walls.
 
 ### 4.3. Safety Bubble
 ```python
@@ -76,7 +79,7 @@ class ReactiveFollowGap(Node):
         end_idx = min(len(ranges), closest_idx + bubble_radius)
         ranges[start_idx:end_idx] = 0.0
 ```
-**Explanation:** The algorithm identifies the closest obstacle in the LiDAR array. It then creates a "safety bubble" around this point (with a radius of `70` array indices) by setting all distances within this bubble to `0.0`. This forces the car to avoid paths that pass dangerously close to walls or corners.
+The algorithm identifies the closest obstacle in the LiDAR array. It then creates a "safety bubble" around this point (with a radius of `70` array indices) by setting all distances within this bubble to `0.0`. This forces the car to avoid paths that pass dangerously close to walls or corners.
 
 ### 4.4. Finding the Max Gap and Target Point
 ```python
@@ -95,7 +98,7 @@ class ReactiveFollowGap(Node):
         target_distance = data.ranges[best_idx]
         angle = data.angle_min + (best_idx * data.angle_increment)
 ```
-**Explanation:** The code splits the non-zero ranges to find all available free spaces, and selects the largest continuous sequence of valid distances. To eliminate the "snake effect" (wobbling), the target point (`best_idx`) is calculated by averaging the geometric center of the gap and the deepest point within that gap. This pulls the car smoothly forward.
+The code splits the non-zero ranges to find all available free spaces, and selects the largest continuous sequence of valid distances. To eliminate the "snake effect" (wobbling), the target point (`best_idx`) is calculated by averaging the geometric center of the gap and the deepest point within that gap. This pulls the car smoothly forward.
 
 ### 4.5. Steering Deadband and Dynamic Velocity Profile
 ```python
@@ -115,7 +118,7 @@ class ReactiveFollowGap(Node):
         else:
             velocity = 3.0   
 ```
-**Explanation:** If the calculated steering angle is less than 4 degrees, the node forces the angle to `0.0`. This strict deadband is crucial for maintaining a perfectly straight trajectory on long straights. The controller then uses predictive braking based on `target_distance` and steering `angle`. It reaches `11.0 m/s` on long straights, but drops to `7.5 m/s` and `5.5 m/s` early enough to reduce momentum before sharp corners, effectively preventing understeer.
+If the calculated steering angle is less than 4 degrees, the node forces the angle to `0.0`. This strict deadband is crucial for maintaining a perfectly straight trajectory on long straights. The controller then uses predictive braking based on `target_distance` and steering `angle`. It reaches `11.0 m/s` on long straights, but drops to `7.5 m/s` and `5.5 m/s` early enough to reduce momentum before sharp corners, effectively preventing understeer.
 
 ### 4.6. Publishing the Command
 ```python
@@ -125,6 +128,6 @@ class ReactiveFollowGap(Node):
         drive_msg.drive.speed = float(velocity)
         self.publisher.publish(drive_msg)
 ```
-**Explanation:** Finally, the calculated steering angle and optimal velocity are packaged into an `AckermannDriveStamped` message and published to drive the car.
+Finally, the calculated steering angle and optimal velocity are packaged into an `AckermannDriveStamped` message and published to drive the car.
 
 ![Node Execution and Track Performance](link_to_your_image_2.png)
