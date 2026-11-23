@@ -364,7 +364,7 @@ The resulting steering angle and target speed are packaged into an `AckermannDri
 # Part 2: 5 Static Obstacles & Multi-Agent Dynamic Overtaking
 
 ### Video Demonstration (Part 2 - 5 Obstacles + 2-Robot Overtaking)
-* **YouTube Video (Part 2):** [Watch Part 2 Demo on YouTube](YOUR_YOUTUBE_LINK_PART_2)
+* **YouTube Video (Part 2):** [Watch Part 2 Demo on YouTube](https://www.youtube.com/watch?v=IxhsEG_hV7M)
 
 ## 2.1. Static Obstacles Map Generation (`Sakhir_obs_map`)
 
