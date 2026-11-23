@@ -49,7 +49,7 @@ PROYECTO-VNT/
 # Part 1: High-Speed Reactive Navigation & Telemetry HUD
 
 ### Video Demonstration (Part 1 - Solo Track & Static Obstacles)
-* **YouTube Video (Part 1):** [Watch Part 1 Demo on YouTube](YOUR_YOUTUBE_LINK_PART_1)
+* **YouTube Video (Part 1):** [Watch Part 1 Demo on YouTube](https://www.youtube.com/watch?v=C25Ra7N5eUw)
 
 ## 1.1. Custom Map Setup (Sakhir Track)
 
