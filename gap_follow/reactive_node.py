@@ -143,7 +143,7 @@ class ReactiveFollowGap(Node):
         extended = ranges.copy()
         n = len(orig)
         disparity_threshold = 0.5
-        car_half_margin = 0.30
+        car_half_margin = 0.28
 
         for i in range(n - 1):
             diff = orig[i + 1] - orig[i]
@@ -180,15 +180,16 @@ class ReactiveFollowGap(Node):
         if np.all(proc_ranges == 0.0):
             return
 
-        center_cone = proc_ranges[np.abs(angles) < math.radians(1.5)]
+        # Cono frontal estrecho (±2.0°) para frenado anticipado al final de recta
+        center_cone = proc_ranges[np.abs(angles) < math.radians(2.0)]
         front_dist = float(np.min(center_cone)) if len(center_cone) > 0 else 18.0
 
         ranges = proc_ranges.copy()
         valid_ranges = np.where(ranges > 0.0, ranges, 18.0)
         closest_idx = np.argmin(valid_ranges)
+        closest_dist = float(valid_ranges[closest_idx])
 
-        # Burbuja compacta (42) para mantener abierto el carril de adelantamiento
-        bubble_radius = 42
+        bubble_radius = 44
         start_idx = max(0, closest_idx - bubble_radius)
         end_idx = min(len(ranges), closest_idx + bubble_radius)
         ranges[start_idx:end_idx] = 0.0
@@ -204,23 +205,35 @@ class ReactiveFollowGap(Node):
         max_depth = np.max(ranges[max_gap])
         deepest_candidates = np.where(ranges[max_gap] == max_depth)[0]
         deepest_idx = max_gap[deepest_candidates[len(deepest_candidates) // 2]]
-        best_idx = int(0.35 * center_idx + 0.65 * deepest_idx)
+
+        # Centrado adaptativo: en huecos estrechos (rebase/obstáculo) mantiene margen con ambos bordes
+        if len(max_gap) < 160:
+            best_idx = int(0.65 * center_idx + 0.35 * deepest_idx)
+        else:
+            best_idx = int(0.35 * center_idx + 0.65 * deepest_idx)
 
         target_distance = float(proc_ranges[best_idx])
         angle = data.angle_min + (best_idx * data.angle_increment)
 
+        # Detección de rebase: obstáculo/carro lento al frente (< 6.5m) con carril libre al lado
+        is_overtaking = (
+            front_dist < 6.5
+            and target_distance > (front_dist + 2.5)
+            and abs(angle) <= math.radians(20)
+        )
+
+        if is_overtaking:
+            effective_dist = max(front_dist, min(target_distance, 7.6))
+        else:
+            effective_dist = min(target_distance, front_dist)
+
         if abs(angle) < math.radians(4):
             angle = 0.0
 
-        # Si ya giró hacia el hueco lateral (>= 5°), usar target_distance libre para rebasar sin frenar
-        if abs(angle) < math.radians(5):
-            effective_dist = min(target_distance, front_dist)
-        else:
-            effective_dist = target_distance
-
-        min_speed = 3.5
+        min_speed = 3.4
         max_speed = self.max_speed
 
+        # 1. Límite por distancia libre al frente
         if effective_dist >= 10.5:
             v_dist = max_speed
         elif effective_dist <= 2.5:
@@ -229,12 +242,20 @@ class ReactiveFollowGap(Node):
             ratio = (effective_dist - 2.5) / 8.0
             v_dist = min_speed + (max_speed - min_speed) * (ratio ** 1.3)
 
+        # 2. Límite por ángulo de giro
         if abs(angle) == 0.0:
             v_angle = max_speed
         else:
-            v_angle = max(min_speed, min(max_speed, 10.5 - 12.0 * abs(angle)))
+            v_angle = max(min_speed, min(max_speed, 10.2 - 13.0 * abs(angle)))
 
-        velocity = min(v_dist, v_angle)
+        # 3. Límite por proximidad solo cuando está muy cerca (< 0.70m)
+        if closest_dist < 0.70:
+            prox_ratio = max(0.0, (closest_dist - 0.30) / 0.40)
+            v_prox = 4.2 + (max_speed - 4.2) * prox_ratio
+        else:
+            v_prox = max_speed
+
+        velocity = min(v_dist, v_angle, v_prox)
 
         drive_msg = AckermannDriveStamped()
         drive_msg.drive.steering_angle = angle
