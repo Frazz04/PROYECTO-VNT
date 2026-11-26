@@ -6,7 +6,7 @@
 | :--- | :--- |
 | **Institution** | Escuela Superior Politécnica del Litoral (ESPOL) |
 | **Program / Area** | Mechatronics / Control & Autonomous Robotics |
-| **Author** | Alain |
+| **Author** | Alaín Sánchez|
 | **Simulation Environment** | ROS 2 Humble — `f1tenth_gym_ros` (`Sakhir_obs_map`) |
 | **Control Strategy** | Purely Reactive Follow the Gap (FTG) + Disparity Extender |
 
