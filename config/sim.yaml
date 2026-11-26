@@ -46,7 +46,10 @@ bridge:
     map_img_ext: '.png'
 
     # opponent parameters
-    num_agent: 1
+    num_agent: 2
+    sx1: 4.689
+    sy1: -1.737
+    stheta1: -0.3547
 
     # ego starting pose on map
     sx: 0.0
