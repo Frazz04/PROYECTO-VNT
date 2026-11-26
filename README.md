@@ -1,4 +1,4 @@
-# F1Tenth Autonomous Navigation: Reactive Obstacle Avoidance & Telemetry Pipeline
+# F1Tenth Autonomous Navigation: Reactive Obstacle Avoidance, Multi-Agent Overtaking & Telemetry Pipeline
 
 ## Project Presentation
 
@@ -9,44 +9,56 @@
 | **Author** | Alaín Sánchez|
 | **Simulation Environment** | ROS 2 Humble — `f1tenth_gym_ros` (`Sakhir_obs_map`) |
 | **Control Strategy** | Purely Reactive Follow the Gap (FTG) + Disparity Extender |
-| **Scope** | Part 1 — Single-Agent High-Speed Navigation with Static Obstacles & Data Logging |
+| **Scope** | Part 1 (Single-Agent Static Obstacle Avoidance) & Part 2 (Multi-Agent Overtaking & Dual Telemetry) |
 
 ---
 
-## Project Media & Telemetry Datasets (Part 1)
+## Project Media & Telemetry Datasets
 
-* **YouTube Demonstration (Part 1 — Single Vehicle with Static Obstacles):** [Watch Video on YouTube](YOUR_YOUTUBE_LINK_PART_1)
-* **Google Drive Repository (Rosbag & Exported CSV Files):** [Download Rosbag & CSV Data on Google Drive](YOUR_GOOGLE_DRIVE_LINK)
+### Part 1 — Single-Agent Navigation with Static Obstacles
+* **YouTube Demonstration (Part 1):** [Watch Part 1 Video on YouTube](YOUR_YOUTUBE_LINK_PART_1)
+* **Google Drive Repository (Part 1 Rosbag & CSV Files):** [Download Part 1 Rosbag & CSV Data](YOUR_GOOGLE_DRIVE_LINK_PART_1)
   * *Included files:* `rosbag_part1/` (`.db3` + `metadata.yaml`) and converted CSV tables (`odometry.csv`, `lidar.csv`, `velocity.csv`).
+
+### Part 2 — Multi-Agent Dynamic Overtaking (`ego_racecar` vs. `opp_racecar`)
+* **YouTube Demonstration (Part 2):** [Watch Part 2 Video on YouTube](YOUR_YOUTUBE_LINK_PART_2)
+* **Google Drive Repository (Part 2 Rosbag & CSV Files):** [Download Part 2 Rosbag & CSV Data](YOUR_GOOGLE_DRIVE_LINK_PART_2)
+  * *Included files:* `rosbag_part2/` (`.db3` + `metadata.yaml`) and converted CSV tables for both vehicles (`odometry.csv`, `lidar.csv`, `velocity.csv`, `opp_odometry.csv`, `opp_lidar.csv`, `opp_velocity.csv`).
 
 ---
 
 ## 1. Introduction
 
-Autonomous vehicles operating in high-speed racing environments must perceive surroundings, plan collision-free trajectories, and execute steering and throttle commands within milliseconds. Unlike low-speed mobile robots that rely on pre-built global maps and Simultaneous Localization and Mapping (SLAM), autonomous racing platforms require reactive local controllers capable of adapting immediately to unmapped obstacles and tight cornering geometries.
+Autonomous vehicles operating in high-speed racing environments must perceive surroundings, plan collision-free trajectories, and execute steering and throttle commands within milliseconds. Unlike low-speed mobile robots that rely on pre-built global maps and Simultaneous Localization and Mapping (SLAM), autonomous racing platforms require reactive local controllers capable of adapting immediately to unmapped static obstacles and dynamic agents.
 
-This project presents the design, implementation, and validation of a purely reactive navigation system developed in **ROS 2 Humble** for a 1/10th-scale Ackermann-steered racecar inside the **`f1tenth_gym_ros`** physics simulator. In **Part 1**, the autonomous agent (`ego_racecar`) is evaluated on the **Sakhir** circuit modified with **5 static obstacles** (`Sakhir_obs_map`) distributed across straightaways and braking zones.
+This project presents the design, implementation, and validation of a purely reactive navigation and telemetry system developed in **ROS 2 Humble** for 1/10th-scale Ackermann racecars inside the **`f1tenth_gym_ros`** physics simulator across two progressive stages:
+
+* **Part 1 (Single-Agent Obstacle Avoidance):** Evaluates the autonomous vehicle (`ego_racecar`, up to `11.0 m/s`) on the **Sakhir** circuit modified with **5 static obstacles** (`Sakhir_obs_map`) placed along straights and braking zones.
+* **Part 2 (Multi-Agent Overtaking):** Deploys two independent ROS 2 control nodes simultaneously on the track—a high-speed ego racecar (`reactive_node`, `11.0 m/s`) and a slower lead opponent (`opp_reactive_node`, `5.5 m/s`) spawned `5.0 m` ahead—requiring real-time gap selection, lateral safety margins, and non-braking lane-change maneuvers to overtake cleanly without collisions.
 
 ### Project Objectives
-1. **Mapless Reactive Navigation:** Navigate the modified Sakhir track cleanly at speeds up to `11.0 m/s` using solely instantaneous 2D LiDAR scans (`/scan`), without reading the map file or using global path planners.
-2. **Reliable Obstacle Evasion:** Prevent corner-clipping collisions against static blocks and hairpin walls by combining a **Disparity Extender** with a dynamic **Safety Bubble** and adaptive gap centering.
-3. **Real-Time Terminal & RViz Telemetry:** Display live lap timing, odometry state (`X`, `Y`, `Yaw`, linear and angular velocities), LiDAR clearances, and commanded control signals in the terminal alongside a 3D HUD marker in RViz2.
-4. **Data Acquisition & Post-Processing Pipeline:** Record full simulation runs via `ros2 bag` (`/ego_racecar/odom`, `/scan`, `/drive`) and convert the raw `.db3` recordings into structured `.csv` files for quantitative performance analysis.
+1. **Mapless Reactive Navigation:** Navigate the modified Sakhir circuit cleanly without reading map files or using global path planners, relying exclusively on instantaneous 2D LiDAR scans.
+2. **Static Obstacle Evasion & Dynamic Overtaking:** Prevent corner-clipping collisions and execute safe high-speed overtakes by combining a **Disparity Extender**, a dynamic **Safety Bubble**, adaptive gap centering, and an overtaking velocity override.
+3. **Synchronized Multi-Agent Telemetry:** Display real-time lap timing, odometry state (`X`, `Y`, `Yaw`, linear and angular velocities), LiDAR clearances, and commanded velocities in the terminal alongside a 3D HUD marker in RViz2, synchronizing the race stopwatch only once both vehicles initiate motion.
+4. **Dual-Agent Data Acquisition & CSV Export Pipeline:** Record single- and multi-agent simulation runs via `ros2 bag` and deserialize all recorded topics into structured `.csv` files for quantitative analysis.
 
 ---
 
 ## 2. Methodology
 
-The navigation and data-logging architecture is built around four core components:
+The navigation and data-logging architecture is built around five core components:
 
 1. **Purely Reactive Local Navigation (No Map Dependency):**
-   The node (`reactive_node.py`) never reads the occupancy grid map. Every control cycle is computed directly from instantaneous `sensor_msgs/LaserScan` ranges on `/scan`, making the system adaptable to unknown obstacle layouts.
-2. **Follow the Gap (FTG) with Disparity Extender:**
-   Standard Follow-the-Gap algorithms treat LiDAR rays as point measurements from the sensor center, which can cause wheel collisions when clipping obstacle corners. By combining a **Disparity Extender** (expanding sharp depth jumps by half the vehicle's safety width) with a **Safety Bubble** around the closest obstacle, the vehicle carves collision-free corridors around all 5 static blocks.
-3. **Adaptive Target Selection & Multi-Constraint Velocity Control:**
-   The controller dynamically adjusts its aiming weight between the geometric center and the deepest point of the widest free corridor depending on passage width, applies a steering deadband to eliminate high-speed oscillations on straights, and computes linear speed using continuous constraints for forward clearance, steering angle, and lateral proximity.
-4. **Real-Time Telemetry & Rosbag-to-CSV Pipeline:**
-   Live vehicle state (odometry pose, LiDAR clearances, linear/angular velocities, and lap times) is printed to the terminal at `4 Hz` and rendered in RViz2 via `visualization_msgs/Marker`. Simultaneously, `ros2 bag record` captures `/ego_racecar/odom`, `/scan`, and `/drive`, which are deserialized into structured `.csv` files using `scripts/bag_to_csv.py`.
+   Neither vehicle node reads the occupancy grid map. Every control cycle is computed directly from instantaneous `sensor_msgs/LaserScan` ranges, allowing the controller to react identically to fixed walls, static blocks, and moving opponent vehicles.
+2. **Follow the Gap (FTG) with Disparity Extender & Safety Bubble:**
+   Standard Follow-the-Gap algorithms treat LiDAR beams as point measurements from the sensor center, risking wheel collisions when clipping corners or passing another car. By expanding sharp depth jumps ($\vert{}\Delta r\vert{} > 0.5\text{ m}$) by half the vehicle's safety width (`0.28 m`) via a **Disparity Extender** and zeroing a `44`-ray **Safety Bubble** around the nearest obstacle, the controller carves collision-free corridors.
+3. **Adaptive Target Aiming & Overtaking Velocity Logic:**
+   * **Adaptive Centering:** In narrow corridors (`< 160` free rays, such as passing static blocks or overtaking the opponent), the target index blends `65% geometric center + 35% deepest ray` to maintain safe clearance on both sides; in open corners (`>= 160` rays), it shifts to `35% center + 65% deepest` for fast apex entry.
+   * **Overtaking Detection:** When catching up to the slower opponent (`front_dist < 6.5 m`) while steering into an open adjacent lane (`target_distance > front_dist + 2.5 m`), the controller overrides frontal braking and maintains up to `7.5 m/s` to complete the pass cleanly.
+4. **Parameterized Dual-Node Execution & Synchronized Start (Part 2):**
+   Both vehicles run from the exact same `reactive_node.py` executable using ROS 2 runtime parameter remapping (`scan_topic`, `drive_topic`, `odom_topic`, `max_speed`, `is_ego`). To guarantee fair lap timing when launching terminals manually, the stopwatch remains at `0.00 s` until both `ego_racecar` and `opp_racecar` move beyond `0.15 m` from their starting grids.
+5. **Real-Time Telemetry & Multi-Agent Rosbag-to-CSV Pipeline:**
+   Live diagnostic blocks (`[LAPS]`, `[ODOMETRY]`, `[LIDAR]`, `[VELOCITY]`) are printed in English at `4 Hz`, while `ros2 bag record` captures all ego and opponent topics and `scripts/bag_to_csv.py` exports them into separate `.csv` tables.
 
 ---
 
@@ -55,10 +67,12 @@ The navigation and data-logging architecture is built around four core component
 ```text
 gap_follow/
 ├── config/
-│   └── sim.yaml                 # Simulator configuration (Sakhir_obs_map, num_agent: 1, initial pose)
+│   ├── sim.yaml                 # Active simulator configuration (Part 2: Sakhir_obs_map, num_agent: 2)
+│   ├── sim_part1.yaml           # Saved simulator configuration for Part 1 (num_agent: 1)
+│   └── sim_part2.yaml           # Saved simulator configuration for Part 2 (num_agent: 2, sx1: 4.689, sy1: -1.737)
 ├── gap_follow/
 │   ├── __init__.py              # Python package initializer
-│   └── reactive_node.py         # Main ROS 2 node: LiDAR processing, FTG control, lap timer & telemetry
+│   └── reactive_node.py         # Parameterized ROS 2 node for Ego (Part 1 & 2) and Opponent (Part 2)
 ├── maps/
 │   ├── Sakhir_map.png           # Base Sakhir circuit occupancy grid
 │   ├── Sakhir_obs_map.png       # Modified Sakhir map with 5 static obstacles (0.40 m x 0.40 m)
@@ -66,21 +80,37 @@ gap_follow/
 ├── resource/
 │   └── gap_follow               # Ament index marker file for ROS 2 package discovery
 ├── scripts/
-│   └── bag_to_csv.py            # Offline converter from ROS 2 bag (.db3) to odometry/lidar/velocity CSVs
+│   └── bag_to_csv.py            # Offline ROS 2 bag (.db3) to CSV converter (supports 1 or 2 agents)
 ├── test/                        # Code style and linter tests (flake8, pep257, copyright)
 ├── package.xml                  # ROS 2 package manifest and dependencies (rclpy, sensor_msgs, etc.)
 ├── setup.cfg                    # Script installation directory configuration
 ├── setup.py                     # Package entry points ('ros2 run gap_follow reactive_node')
-└── README.md                    # Technical documentation
+└── README.md                    # Technical documentation (Part 1 & Part 2)
 ```
 
 ---
 
-## 4. Complete Code Walkthrough of `reactive_node.py`
+## 4. Multi-Agent ROS 2 Node Architecture (Part 2)
 
-Below is the complete source code of `reactive_node.py` divided sequentially into functional blocks, explaining how each section operates inside the ROS 2 control loop.
+Instead of duplicating source files, Part 2 instantiates two isolated ROS 2 nodes from the same `ReactiveFollowGap` class by overriding ROS 2 parameters at launch:
 
-### 4.1 Libraries, ROS 2 Parameters & State Initialization (`__init__`)
+| Parameter / Interface | Ego Node (`reactive_node`) | Opponent Node (`opp_reactive_node`) | Role in Multi-Agent Simulation |
+| :--- | :--- | :--- | :--- |
+| **Node Name (`__node`)** | `reactive_node` | `opp_reactive_node` | Prevents node name collisions in the ROS 2 graph |
+| **`scan_topic`** | `/scan` | `/opp_scan` | Independent 2D LiDAR sensor streams (`LaserScan`) |
+| **`drive_topic`** | `/drive` | `/opp_drive` | Independent Ackermann steering & speed commands |
+| **`odom_topic`** | `/ego_racecar/odom` | `/opp_racecar/odom` | Independent pose & velocity feedback (`Odometry`) |
+| **`opp_odom_topic`** | `/opp_racecar/odom` | `/opp_racecar/odom` | Monitored by Ego to synchronize stopwatch start |
+| **`max_speed`** | `11.0 m/s` | `5.5 m/s` | Speed differential enables Ego to catch and overtake Opp |
+| **`is_ego`** | `True` | `False` | Enables `4 Hz` terminal telemetry & RViz2 HUD only on Ego |
+
+---
+
+## 5. Complete Code Walkthrough
+
+### 5.1 Navigation Controller Node (`gap_follow/reactive_node.py`)
+
+#### A. Libraries, ROS 2 Parameters & State Initialization (`__init__`)
 
 ```python
 import rclpy
@@ -155,14 +185,12 @@ class ReactiveFollowGap(Node):
 ```
 
 * **What this block does:**
-  * Imports `rclpy` for ROS 2 node execution, `numpy` for fast vectorized LiDAR array operations, and standard ROS 2 message definitions (`LaserScan`, `AckermannDriveStamped`, `Odometry`, `Marker`).
-  * Declares runtime parameters (`scan_topic`, `drive_topic`, `odom_topic`, `max_speed`, `is_ego`) so the exact same node executable can be reconfigured without modifying source code.
-  * Creates subscriptions to `/scan` and `/ego_racecar/odom`, a publisher on `/drive`, a 3D HUD marker publisher on `/lap_telemetry_marker`, and a `0.25 s` (`4 Hz`) periodic timer for terminal telemetry output.
-  * Initializes state variables for lap timing, spatial hysteresis, live sensor readings, and the physical F1Tenth wheelbase ($L = 0.3302\text{ m}$).
+  * Declares runtime ROS 2 parameters (`scan_topic`, `drive_topic`, `odom_topic`, `opp_odom_topic`, `max_speed`, `is_ego`) so one codebase serves both Part 1 (`ego` only) and Part 2 (`ego` + `opp`).
+  * When `is_ego=True`, subscribes to `/opp_racecar/odom` for start synchronization, publishes 3D lap markers to `/lap_telemetry_marker`, and triggers `display_telemetry()` every `0.25 s` (`4 Hz`).
 
 ---
 
-### 4.2 Odometry Processing, Synchronized Start & Hysteresis Lap Counter (`opp_odom_callback` & `odom_callback`)
+#### B. Dual-Agent Odometry, Synchronized Start & Hysteresis Lap Counter (`opp_odom_callback` & `odom_callback`)
 
 ```python
     def opp_odom_callback(self, msg):
@@ -228,13 +256,13 @@ class ReactiveFollowGap(Node):
 ```
 
 * **What this block does:**
-  * **Pose & Velocity Extraction:** Reads the vehicle's $(x, y)$ position, converts the quaternion orientation $(x, y, z, w)$ into planar heading angle $\text{Yaw} = \text{atan2}(2(wz + xy), 1 - 2(y^2 + z^2))$, and stores real linear ($v_x$) and angular ($\omega_z$) twist velocities.
-  * **Motion-Triggered Stopwatch:** Records the initial starting coordinates $(x_0, y_0)$ and waits until the vehicle moves more than `0.15 m` before starting `lap_start_time`, avoiding idle waiting time before launch.
-  * **Hysteresis Lap Detection:** Prevents false double-counting at the start line by requiring the vehicle to travel farther than `5.0 m` (`left_start_zone = True`) before re-entering a `2.5 m` radius increments `lap_count` and updates `last_lap_time` and `best_lap_time`.
+  * Converts quaternion orientation into planar heading angle ($\text{Yaw}$) and records live twist velocities ($v_x, \omega_z$).
+  * **Synchronized Start:** In Part 1 (`opp_seen == False`), the timer begins as soon as `ego_racecar` moves `> 0.15 m`. In Part 2 (`opp_seen == True`), `race_started` waits until **both** `ego_moving` and `opp_moving` become `True`, preventing clock drift while launching terminals.
+  * **Spatial Hysteresis:** Requires traveling `> 5.0 m` away from the start line (`left_start_zone = True`) before re-entering a `2.5 m` radius increments `lap_count`.
 
 ---
 
-### 4.3 Real-Time Terminal Telemetry & RViz2 HUD Marker (`display_telemetry`)
+#### C. Live Terminal Telemetry & RViz2 HUD (`display_telemetry`)
 
 ```python
     def display_telemetry(self):
@@ -279,12 +307,11 @@ class ReactiveFollowGap(Node):
 ```
 
 * **What this block does:**
-  * Prints four structured diagnostic lines (`[LAPS]`, `[ODOMETRY]`, `[LIDAR]`, and `[VELOCITY]`) to the terminal every `0.25 s` with `flush=True` for immediate live monitoring.
-  * Publishes a `TEXT_VIEW_FACING` `visualization_msgs/Marker` anchored in the `map` frame so lap counts and stopwatch times are visible directly inside RViz2 during recording.
+  * Prints `[LAPS]`, `[ODOMETRY]`, `[LIDAR]`, and `[VELOCITY]` diagnostics to the terminal at `4 Hz` and updates the RViz2 `TEXT_VIEW_FACING` marker on `/lap_telemetry_marker`.
 
 ---
 
-### 4.4 Disparity Extender (`apply_disparity_extender`)
+#### D. Disparity Extender & LiDAR Preprocessing (`apply_disparity_extender` & `preprocess_lidar`)
 
 ```python
     def apply_disparity_extender(self, ranges, angle_inc):
@@ -309,19 +336,7 @@ class ReactiveFollowGap(Node):
                     extended[start_idx:i + 1] = np.minimum(extended[start_idx:i + 1], r_close)
 
         return extended
-```
 
-* **What this block does:**
-  * Iterates through consecutive LiDAR beams to detect depth discontinuities larger than `0.5 m` (`disparity_threshold`), which mark the sharp edges of static obstacles or track corners.
-  * Computes how many angular ray indices correspond to half the vehicle's width plus safety clearance (`car_half_margin = 0.28 m`) at distance $r_{\text{close}}$:
-    $$\theta_{\text{ext}} = \arctan\left(\frac{0.28}{\max(r_{\text{close}}, 0.1)}\right), \quad N_{\text{ext}} = \left\lfloor \frac{\theta_{\text{ext}}}{\Delta\theta} \right\rfloor$$
-  * Overwrites adjacent far rays with $r_{\text{close}}$, virtually expanding obstacles in polar space so the vehicle's wheels never clip an edge.
-
----
-
-### 4.5 LiDAR Sanitization & Field-of-View Masking (`preprocess_lidar`)
-
-```python
     def preprocess_lidar(self, ranges, angle_min, angle_inc):
         proc_ranges = np.array(ranges)
         proc_ranges = np.nan_to_num(proc_ranges, nan=18.0, posinf=18.0, neginf=0.0)
@@ -337,12 +352,12 @@ class ReactiveFollowGap(Node):
 ```
 
 * **What this block does:**
-  * Converts raw scan lists into a NumPy array, sanitizes `NaN`/`Inf` values, and caps the maximum lookahead horizon at **`18.0 m`** to prevent excessive speed buildup on long straights prior to sharp hairpins.
-  * Runs `apply_disparity_extender` across the entire scan before masking out rays outside $[-1.30, +1.30]\text{ rad}$ ($\approx \pm 74.5^\circ$), restricting navigation decisions strictly to the forward hemisphere.
+  * Clips maximum sensor range to **`18.0 m`** to control braking distances on long straights.
+  * Expands every depth jump ($\vert{}\Delta r\vert{} > 0.5\text{ m}$)—whether from static obstacles, hairpin corners, or the opponent vehicle's rear bumper—by an angular arc $\theta_{\text{ext}} = \arctan(0.28 / r_{\text{close}})$, then masks angles outside $[-1.30, +1.30]\text{ rad}$ ($\pm 74.5^\circ$).
 
 ---
 
-### 4.6 Safety Bubble & Adaptive Gap Selection (`lidar_callback` — Part A)
+#### E. Safety Bubble, Adaptive Gap Aiming, Overtaking & Velocity Control (`lidar_callback` & `main`)
 
 ```python
     def lidar_callback(self, data):
@@ -382,19 +397,7 @@ class ReactiveFollowGap(Node):
             best_idx = int(0.65 * center_idx + 0.35 * deepest_idx)
         else:
             best_idx = int(0.35 * center_idx + 0.65 * deepest_idx)
-```
 
-* **What this block does:**
-  * Measures `front_dist` inside a narrow $\pm 2.0^\circ$ forward cone to detect walls or obstacles directly ahead at the end of straightaways.
-  * Finds the closest valid point (`closest_idx`) and zeroes out `44` indices on either side (`bubble_radius`), creating a protective safety bubble around the nearest threat.
-  * Splits remaining positive rays into contiguous free-space corridors (`gaps`), selects the widest corridor (`max_gap`), and computes both its geometric midpoint (`center_idx`) and median deepest ray (`deepest_idx`).
-  * Blends both references dynamically: in narrow obstacle corridors (`< 160` rays), it weights `65% center + 35% deepest` to keep safe lateral margins; in wide open corners (`>= 160` rays), it shifts to `35% center + 65% deepest` for fast apex entry.
-
----
-
-### 4.7 Steering Deadband, Multi-Constraint Velocity Control & Publishing (`lidar_callback` — Part B & `main`)
-
-```python
         target_distance = float(proc_ranges[best_idx])
         angle = data.angle_min + (best_idx * data.angle_increment)
 
@@ -469,49 +472,120 @@ if __name__ == '__main__':
 ```
 
 * **What this block does:**
-  * Evaluates `effective_dist` by combining frontal clearance (`front_dist`) with target lane depth (`target_distance`), allowing smooth high-speed bypasses around static blocks when an open side lane (`> front_dist + 2.5 m`) is detected.
-  * Applies a **`±4.0°` steering deadband** (`angle = 0.0`) to eliminate high-frequency steering oscillations ("worm effect") on straightaways.
-  * Computes linear velocity (`velocity`) between `3.4 m/s` and `11.0 m/s` by taking the most conservative value among three continuous limits:
-    1. **`v_dist`:** Non-linear acceleration curve ($\text{ratio}^{1.3}$) governed by forward clearance (`2.5 m` to `10.5 m`).
-    2. **`v_angle`:** Linear cornering speed reduction (`10.2 - 13.0 * |angle|`) proportional to steering demand.
-    3. **`v_prox`:** Safety damping activated whenever any obstacle enters within `0.70 m` of the chassis.
-  * Computes commanded angular velocity via the kinematic Ackermann bicycle model ($\omega = \frac{v}{L}\tan(\delta)$), updates telemetry attributes, publishes `AckermannDriveStamped` to `/drive`, and manages clean node shutdown in `main()`.
+  * Zeroes a `44`-index **Safety Bubble** around `closest_idx`, selects the widest corridor `max_gap`, and blends `center_idx` and `deepest_idx` (`65%/35%` in narrow overtaking/obstacle gaps vs. `35%/65%` in open corners).
+  * **Overtaking Override (`is_overtaking`):** When approaching the slower opponent (`front_dist < 6.5 m`) with an open adjacent lane (`target_distance > front_dist + 2.5 m` and `|angle| <= 20°`), `effective_dist` prevents premature braking behind the lead car and maintains `~7.5 m/s` (well above the opponent's `5.5 m/s`) until the pass is completed.
+  * Applies a `±4.0°` steering deadband and computes final velocity from `min(v_dist, v_angle, v_prox)` plus kinematic yaw rate $\omega = \frac{v}{L}\tan(\delta)$.
 
 ---
 
-## 5. Build, Execution & Data Export Workflow (Part 1)
+### 5.2 Offline Rosbag-to-CSV Converter (`scripts/bag_to_csv.py`)
 
-### 1. Build the Workspace
+```python
+import sys
+import os
+import csv
+import math
+import rosbag2_py
+from rclpy.serialization import deserialize_message
+from rosidl_runtime_py.utilities import get_message
+
+
+def extract_scan_metrics(ranges):
+    valid = [r for r in ranges if not math.isnan(r) and not math.isinf(r) and r > 0.0]
+    n = len(ranges)
+    front = ranges[n // 2] if n > 0 else 0.0
+    right = ranges[int(n * 0.25)] if n > 0 else 0.0
+    left = ranges[int(n * 0.75)] if n > 0 else 0.0
+    min_d = min(valid) if valid else 0.0
+    max_d = max(valid) if valid else 0.0
+    return min_d, front, right, left, max_d
+
+
+def export_bag_to_csv(bag_path, out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+
+    storage_options = rosbag2_py.StorageOptions(uri=bag_path, storage_id='')
+    converter_options = rosbag2_py.ConverterOptions(
+        input_serialization_format='cdr',
+        output_serialization_format='cdr'
+    )
+
+    reader = rosbag2_py.SequentialReader()
+    reader.open(storage_options, converter_options)
+
+    topic_types = reader.get_all_topics_and_types()
+    type_map = {t.name: t.type for t in topic_types}
+    has_opp = any(t.startswith('/opp_') for t in type_map)
+```
+
+* **What this script does:**
+  * Opens any ROS 2 bag directory (`rosbag_part1` or `rosbag_part2`) via `rosbag2_py.SequentialReader` and deserializes CDR binary messages into native Python ROS 2 objects (`Odometry`, `LaserScan`, `AckermannDriveStamped`).
+  * Automatically detects whether opponent topics (`/opp_racecar/odom`, `/opp_scan`, `/opp_drive`) exist in the bag:
+    * **For Part 1:** Generates `odometry.csv`, `lidar.csv`, and `velocity.csv`.
+    * **For Part 2:** Generates all 3 Ego CSVs plus `opp_odometry.csv`, `opp_lidar.csv`, and `opp_velocity.csv`.
+
+---
+
+## 6. Build, Execution & Data Export Workflows
+
+### Build the Workspace
 ```bash
 cd ~/F1Tenth-Repository
 colcon build --packages-select f1tenth_gym_ros gap_follow
 source install/setup.bash
 ```
 
-### 2. Run Simulation, Rosbag Recording & Reactive Controller
-Open **3 terminals** and run in order:
+---
 
-* **Terminal 1 — Launch Simulator (`Sakhir_obs_map`, 1 agent):**
-  ```bash
-  cd ~/F1Tenth-Repository && source install/setup.bash
-  ros2 launch f1tenth_gym_ros gym_bridge_launch.py
-  ```
-* **Terminal 2 — Record Rosbag (`Odometry`, `LiDAR`, `Velocity`):**
-  ```bash
-  mkdir -p ~/F1Tenth-Repository/bags && cd ~/F1Tenth-Repository/bags
-  source ~/F1Tenth-Repository/install/setup.bash
-  ros2 bag record -o rosbag_part1 /ego_racecar/odom /scan /drive
-  ```
-* **Terminal 3 — Launch Reactive Navigation Node:**
-  ```bash
-  cd ~/F1Tenth-Repository && source install/setup.bash
-  ros2 run gap_follow reactive_node
-  ```
+### Workflow A — Part 1 (Single Vehicle with Static Obstacles)
 
-### 3. Convert Rosbag to CSV
-After stopping the nodes (`Ctrl + C` in Terminal 3, then `Ctrl + C` in Terminal 2), run:
-```bash
-cd ~/F1Tenth-Repository/bags
-python3 ~/F1Tenth-Repository/src/gap_follow/scripts/bag_to_csv.py rosbag_part1 csv_part1
-```
-This generates `odometry.csv`, `lidar.csv`, and `velocity.csv` inside `csv_part1/`.
+1. **Activate Part 1 config (`num_agent: 1`) and rebuild simulator:**
+   ```bash
+   cp ~/F1Tenth-Repository/src/gap_follow/config/sim_part1.yaml ~/F1Tenth-Repository/src/f1tenth_gym_ros/config/sim.yaml
+   cd ~/F1Tenth-Repository && colcon build --packages-select f1tenth_gym_ros && source install/setup.bash
+   ```
+2. **Open 3 terminals and run in order:**
+   * **Terminal 1 (Simulator):** `ros2 launch f1tenth_gym_ros gym_bridge_launch.py`
+   * **Terminal 2 (Rosbag Record):** `cd ~/F1Tenth-Repository/bags && ros2 bag record -o rosbag_part1 /ego_racecar/odom /scan /drive`
+   * **Terminal 3 (Ego Controller):** `ros2 run gap_follow reactive_node`
+3. **Export Part 1 CSVs** (after pressing `Ctrl + C` in Terminal 3 and Terminal 2):
+   ```bash
+   cd ~/F1Tenth-Repository/bags
+   python3 ~/F1Tenth-Repository/src/gap_follow/scripts/bag_to_csv.py rosbag_part1 csv_part1
+   ```
+
+---
+
+### Workflow B — Part 2 (Multi-Agent Overtaking: Ego `11.0 m/s` vs. Opponent `5.5 m/s`)
+
+1. **Activate Part 2 config (`num_agent: 2`) and rebuild simulator:**
+   ```bash
+   cp ~/F1Tenth-Repository/src/gap_follow/config/sim_part2.yaml ~/F1Tenth-Repository/src/f1tenth_gym_ros/config/sim.yaml
+   cd ~/F1Tenth-Repository && colcon build --packages-select f1tenth_gym_ros && source install/setup.bash
+   ```
+2. **Open 4 terminals and run in order:**
+   * **Terminal 1 (Simulator):**
+     ```bash
+     cd ~/F1Tenth-Repository && source install/setup.bash
+     ros2 launch f1tenth_gym_ros gym_bridge_launch.py
+     ```
+   * **Terminal 2 (Dual-Agent Rosbag Record):**
+     ```bash
+     cd ~/F1Tenth-Repository/bags && source ~/F1Tenth-Repository/install/setup.bash
+     ros2 bag record -o rosbag_part2 /ego_racecar/odom /scan /drive /opp_racecar/odom /opp_scan /opp_drive
+     ```
+   * **Terminal 3 (Opponent Node — `5.5 m/s`):**
+     ```bash
+     cd ~/F1Tenth-Repository && source install/setup.bash
+     ros2 run gap_follow reactive_node --ros-args -r __node:=opp_reactive_node -p scan_topic:=/opp_scan -p drive_topic:=/opp_drive -p odom_topic:=/opp_racecar/odom -p max_speed:=5.5 -p is_ego:=false
+     ```
+   * **Terminal 4 (Ego Node — `11.0 m/s` + Live Telemetry):**
+     ```bash
+     cd ~/F1Tenth-Repository && source install/setup.bash
+     ros2 run gap_follow reactive_node
+     ```
+3. **Export Part 2 CSVs** (after pressing `Ctrl + C` in Terminals 4, 3, and 2):
+   ```bash
+   cd ~/F1Tenth-Repository/bags
+   python3 ~/F1Tenth-Repository/src/gap_follow/scripts/bag_to_csv.py rosbag_part2 csv_part2
+   ```
