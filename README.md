@@ -50,8 +50,8 @@ gap_follow/
 
 ## 1.1 Media & Telemetry Datasets (Part 1)
 
-* **YouTube Demonstration (Part 1):** [Watch Part 1 Video on YouTube](YOUR_YOUTUBE_LINK_PART_1)
-* **Google Drive Repository (Part 1 Rosbag & CSV Files):** [Download Part 1 Rosbag & CSV Data](YOUR_GOOGLE_DRIVE_LINK_PART_1)
+* **YouTube Demonstration (Part 1):** [Watch Part 1 Video on YouTube](https://www.youtube.com/watch?v=FEg4f36rbRs)
+* **Google Drive Repository (Part 1 Rosbag & CSV Files):** [Download Part 1 Rosbag & CSV Data](https://drive.google.com/drive/folders/1SRFstlYe2fw5lLFCmOm4M3tun3Aivstm?usp=sharing)
   * *Included files:* `rosbag_part1/` (`.db3` + `metadata.yaml`) and converted CSV tables (`odometry.csv`, `lidar.csv`, `velocity.csv`).
 
 ---
@@ -216,8 +216,8 @@ Autonomous racing at high speeds requires real-time perception and decision-maki
 
 ## 2.1 Media & Telemetry Datasets (Part 2)
 
-* **YouTube Demonstration (Part 2):** [Watch Part 2 Video on YouTube](YOUR_YOUTUBE_LINK_PART_2)
-* **Google Drive Repository (Part 2 Rosbag & CSV Files):** [Download Part 2 Rosbag & CSV Data](YOUR_GOOGLE_DRIVE_LINK_PART_2)
+* **YouTube Demonstration (Part 2):** [Watch Part 2 Video on YouTube](https://www.youtube.com/watch?v=VInKZxv27xs)
+* **Google Drive Repository (Part 2 Rosbag & CSV Files):** [Download Part 2 Rosbag & CSV Data](https://drive.google.com/drive/folders/1iEBmhceOEppFtZkpx0G388o3cwOAI9Wc?usp=sharing)
   * *Included files:* `rosbag_part2/` (`.db3` + `metadata.yaml`) and converted CSV tables for both vehicles (`odometry.csv`, `lidar.csv`, `velocity.csv`, `opp_odometry.csv`, `opp_lidar.csv`, `opp_velocity.csv`).
 
 ---
