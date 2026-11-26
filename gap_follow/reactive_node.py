@@ -12,7 +12,7 @@ class ReactiveFollowGap(Node):
     def __init__(self):
         super().__init__('reactive_node')
 
-        # Parámetros configurables para Ego (Parte 1 y 2) y Opponent (Parte 2)
+        # Configurable parameters for Ego (Part 1 & 2) and Opponent (Part 2)
         self.declare_parameter('scan_topic', '/scan')
         self.declare_parameter('drive_topic', '/drive')
         self.declare_parameter('odom_topic', '/ego_racecar/odom')
@@ -34,9 +34,9 @@ class ReactiveFollowGap(Node):
         if self.is_ego:
             self.opp_odom_sub = self.create_subscription(Odometry, opp_odom_topic, self.opp_odom_callback, 10)
             self.marker_pub = self.create_publisher(Marker, '/lap_telemetry_marker', 10)
-            self.timer = self.create_timer(0.1, self.display_telemetry)
+            self.timer = self.create_timer(0.25, self.display_telemetry)
 
-        # Estado de salida y cronómetro sincronizado
+        # Start state and synchronized stopwatch
         self.start_x = None
         self.start_y = None
         self.opp_start_x = None
@@ -51,6 +51,22 @@ class ReactiveFollowGap(Node):
         self.last_lap_time = 0.0
         self.best_lap_time = float('inf')
         self.left_start_zone = False
+
+        # Live telemetry variables (Odometry, LiDAR, and Velocities)
+        self.curr_x = 0.0
+        self.curr_y = 0.0
+        self.curr_yaw = 0.0
+        self.odom_lin_vel = 0.0
+        self.odom_ang_vel = 0.0
+
+        self.lidar_front_dist = 0.0
+        self.lidar_min_dist = 0.0
+        self.lidar_target_dist = 0.0
+
+        self.cmd_lin_vel = 0.0
+        self.cmd_steering = 0.0
+        self.cmd_ang_vel = 0.0
+        self.wheelbase = 0.3302  # Standard F1Tenth wheelbase (m)
 
     def opp_odom_callback(self, msg):
         ox = msg.pose.pose.position.x
@@ -69,6 +85,17 @@ class ReactiveFollowGap(Node):
         curr_x = msg.pose.pose.position.x
         curr_y = msg.pose.pose.position.y
 
+        # Extract Yaw orientation from quaternion and actual twist velocities
+        q = msg.pose.pose.orientation
+        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        self.curr_yaw = math.atan2(siny_cosp, cosy_cosp)
+
+        self.curr_x = curr_x
+        self.curr_y = curr_y
+        self.odom_lin_vel = msg.twist.twist.linear.x
+        self.odom_ang_vel = msg.twist.twist.angular.z
+
         if self.start_x is None:
             self.start_x = curr_x
             self.start_y = curr_y
@@ -77,7 +104,7 @@ class ReactiveFollowGap(Node):
         if not self.ego_moving and math.hypot(curr_x - self.start_x, curr_y - self.start_y) > 0.15:
             self.ego_moving = True
 
-        # Arrancar cronómetro solo cuando ambos vehículos estén en movimiento (o ego solo si es 1 agente)
+        # Start stopwatch only once both vehicles move (or ego alone in 1-agent mode)
         if not self.race_started:
             both_ready = self.ego_moving and (self.opp_moving if self.opp_seen else True)
             if both_ready:
@@ -107,13 +134,17 @@ class ReactiveFollowGap(Node):
         best_str = f"{self.best_lap_time:.2f} s" if self.best_lap_time != float('inf') else "--.-- s"
         last_str = f"{self.last_lap_time:.2f} s" if self.lap_count > 0 else "--.-- s"
 
-        telemetry_line = (
-            f"\r[TELEMETRY] Lap: {self.lap_count} | "
-            f"Current: {current_lap_time:.2f} s | "
-            f"Last: {last_str} | "
-            f"Best: {best_str}   "
+        telemetry_block = (
+            f"\n================================================================================\n"
+            f"[LAPS]     Lap: {self.lap_count} | Current: {current_lap_time:.2f} s | Last: {last_str} | Best: {best_str}\n"
+            f"[ODOMETRY] X: {self.curr_x:6.2f} m | Y: {self.curr_y:6.2f} m | Yaw: {self.curr_yaw:5.2f} rad | "
+            f"Lin_vel: {self.odom_lin_vel:5.2f} m/s | Ang_vel: {self.odom_ang_vel:5.2f} rad/s\n"
+            f"[LIDAR]    Front: {self.lidar_front_dist:5.2f} m | Min: {self.lidar_min_dist:5.2f} m | "
+            f"Target: {self.lidar_target_dist:5.2f} m\n"
+            f"[VELOCITY] Cmd Linear: {self.cmd_lin_vel:5.2f} m/s | Cmd Angular: {self.cmd_ang_vel:5.2f} rad/s | "
+            f"Steering: {self.cmd_steering:5.2f} rad"
         )
-        print(telemetry_line, end="", flush=True)
+        print(telemetry_block, flush=True)
 
         marker = Marker()
         marker.header.frame_id = "map"
@@ -180,7 +211,7 @@ class ReactiveFollowGap(Node):
         if np.all(proc_ranges == 0.0):
             return
 
-        # Cono frontal estrecho (±2.0°) para frenado anticipado al final de recta
+        # Narrow frontal cone (±2.0 deg) for early braking at end of straights
         center_cone = proc_ranges[np.abs(angles) < math.radians(2.0)]
         front_dist = float(np.min(center_cone)) if len(center_cone) > 0 else 18.0
 
@@ -206,7 +237,7 @@ class ReactiveFollowGap(Node):
         deepest_candidates = np.where(ranges[max_gap] == max_depth)[0]
         deepest_idx = max_gap[deepest_candidates[len(deepest_candidates) // 2]]
 
-        # Centrado adaptativo: en huecos estrechos (rebase/obstáculo) mantiene margen con ambos bordes
+        # Adaptive centering: keeps safe margin on narrow gaps (overtaking/obstacles)
         if len(max_gap) < 160:
             best_idx = int(0.65 * center_idx + 0.35 * deepest_idx)
         else:
@@ -215,7 +246,7 @@ class ReactiveFollowGap(Node):
         target_distance = float(proc_ranges[best_idx])
         angle = data.angle_min + (best_idx * data.angle_increment)
 
-        # Detección de rebase: obstáculo/carro lento al frente (< 6.5m) con carril libre al lado
+        # Overtaking detection: slow car/obstacle ahead (< 6.5m) with open side lane
         is_overtaking = (
             front_dist < 6.5
             and target_distance > (front_dist + 2.5)
@@ -233,7 +264,7 @@ class ReactiveFollowGap(Node):
         min_speed = 3.4
         max_speed = self.max_speed
 
-        # 1. Límite por distancia libre al frente
+        # 1. Forward clearance speed limit
         if effective_dist >= 10.5:
             v_dist = max_speed
         elif effective_dist <= 2.5:
@@ -242,13 +273,13 @@ class ReactiveFollowGap(Node):
             ratio = (effective_dist - 2.5) / 8.0
             v_dist = min_speed + (max_speed - min_speed) * (ratio ** 1.3)
 
-        # 2. Límite por ángulo de giro
+        # 2. Steering angle speed limit
         if abs(angle) == 0.0:
             v_angle = max_speed
         else:
             v_angle = max(min_speed, min(max_speed, 10.2 - 13.0 * abs(angle)))
 
-        # 3. Límite por proximidad solo cuando está muy cerca (< 0.70m)
+        # 3. Lateral proximity speed limit (< 0.70m)
         if closest_dist < 0.70:
             prox_ratio = max(0.0, (closest_dist - 0.30) / 0.40)
             v_prox = 4.2 + (max_speed - 4.2) * prox_ratio
@@ -256,6 +287,14 @@ class ReactiveFollowGap(Node):
             v_prox = max_speed
 
         velocity = min(v_dist, v_angle, v_prox)
+
+        # Store values for terminal telemetry
+        self.lidar_front_dist = front_dist
+        self.lidar_min_dist = closest_dist
+        self.lidar_target_dist = target_distance
+        self.cmd_lin_vel = float(velocity)
+        self.cmd_steering = float(angle)
+        self.cmd_ang_vel = float((velocity / self.wheelbase) * math.tan(angle))
 
         drive_msg = AckermannDriveStamped()
         drive_msg.drive.steering_angle = angle
